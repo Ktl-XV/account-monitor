@@ -301,40 +301,44 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             }
         };
 
+        let block_number_with_delay = block_number - 1;
+
         info!("Current block number on {}: {}", chain.name, block_number);
 
-        debug!(
-            "Processing {} from block {} to block {}",
-            chain.name, next_block_number, block_number
-        );
-        let events = match provider
-            .get_logs(
-                &LogFilter::new()
-                    .from_block(next_block_number)
-                    .to_block(block_number),
-            )
-            .await
-        {
-            Ok(events) => events,
-            Err(_) => {
-                error!(
-                    "Error while getting {} events from RPC, retrying",
-                    chain.name
-                );
-                continue;
-            }
-        };
+        if next_block_number <= block_number_with_delay {
+            debug!(
+                "Processing {} from block {} to block {}",
+                chain.name, next_block_number, block_number_with_delay
+            );
+            let events = match provider
+                .get_logs(
+                    &LogFilter::new()
+                        .from_block(next_block_number)
+                        .to_block(block_number_with_delay),
+                )
+                .await
+            {
+                Ok(events) => events,
+                Err(_) => {
+                    error!(
+                        "Error while getting {} events from RPC, retrying",
+                        chain.name
+                    );
+                    continue;
+                }
+            };
 
-        let notification = process_block_events(&events, &chain, addressbook.clone());
+            let notification = process_block_events(&events, &chain, addressbook.clone());
 
-        if notification.is_some() {
-            let sent_notification = notification.unwrap().send().await;
-            if sent_notification.is_err() {
-                error!("Error while sending notification, retrying");
-                continue;
+            if notification.is_some() {
+                let sent_notification = notification.unwrap().send().await;
+                if sent_notification.is_err() {
+                    error!("Error while sending notification, retrying");
+                    continue;
+                }
             }
+            next_block_number = block_number_with_delay + 1;
         }
-        next_block_number = block_number + 1;
 
         let elapsed_time = now.elapsed();
 
