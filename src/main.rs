@@ -91,13 +91,41 @@ async fn main() -> Result<()> {
 
     let chains = Chain::init_from_env_vec();
 
-    for chain in chains.into_iter() {
-        match chain.mode {
-            ChainMode::Blocks => {
-                tokio::spawn(monitor_chain_blocks(chain.clone(), addressbook.clone()));
+    let debug_block_var = env::var("DEBUG_BLOCK");
+    if debug_block_var.is_ok() {
+        warn!("Running in debug mode, getting single block");
+        let debug_block_number = debug_block_var
+            .unwrap()
+            .parse::<u64>()
+            .expect("Invalid DEBUG_BLOCK");
+
+        for chain in chains.into_iter() {
+            match chain.mode {
+                ChainMode::Blocks => {
+                    tokio::spawn(debug_chain_blocks(
+                        chain.clone(),
+                        addressbook.clone(),
+                        debug_block_number as i32,
+                    ));
+                }
+                ChainMode::Events => {
+                    tokio::spawn(debug_chain_events(
+                        chain.clone(),
+                        addressbook.clone(),
+                        debug_block_number,
+                    ));
+                }
             }
-            ChainMode::Events => {
-                tokio::spawn(monitor_chain_events(chain.clone(), addressbook.clone()));
+        }
+    } else {
+        for chain in chains.into_iter() {
+            match chain.mode {
+                ChainMode::Blocks => {
+                    tokio::spawn(monitor_chain_blocks(chain.clone(), addressbook.clone()));
+                }
+                ChainMode::Events => {
+                    tokio::spawn(monitor_chain_events(chain.clone(), addressbook.clone()));
+                }
             }
         }
     }
@@ -158,39 +186,38 @@ async fn flexible_get_block_receipts<T: Into<BlockNumber> + Send + Sync + Serial
     }
 }
 
-async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<String, String>>>) {
+async fn debug_chain_blocks(
+    chain: Chain,
+    addressbook: Arc<Mutex<HashMap<String, String>>>,
+    debug_block_number: i32,
+) {
     let provider = connect_and_verify(chain.clone()).await;
 
-    let debug_block_var = env::var("DEBUG_BLOCK");
-    if debug_block_var.is_ok() {
-        warn!("Running in debug mode, getting single block");
-        let debug_block_number = debug_block_var
-            .unwrap()
-            .parse::<i32>()
-            .expect("Invalid DEBUG_BLOCK");
+    let block = flexible_get_block_receipts(provider, debug_block_number)
+        .await
+        .unwrap();
 
-        let block = flexible_get_block_receipts(provider, debug_block_number)
-            .await
-            .unwrap();
+    loop {
+        let now = Instant::now();
+        let notification = process_block(&block, &chain, addressbook.clone());
 
-        loop {
-            let now = Instant::now();
-            let notification = process_block(&block, &chain, addressbook.clone());
-
-            if notification.is_some() {
-                notification.unwrap().send().await.unwrap();
-                info!("Notification sent, exiting");
-                std::process::exit(0)
-            }
-
-            warn!("No transaction by monitored accounts found, have the accounts been setup?");
-
-            let elapsed_time = now.elapsed();
-            let sleep_time = chain.blocktime - elapsed_time;
-            debug!("Sleeping for: {} ms", sleep_time.as_millis());
-            sleep(sleep_time).await;
+        if notification.is_some() {
+            notification.unwrap().send().await.unwrap();
+            info!("Notification sent, exiting");
+            std::process::exit(0)
         }
-    };
+
+        warn!("No transaction by monitored accounts found, have the accounts been setup?");
+
+        let elapsed_time = now.elapsed();
+        let sleep_time = chain.blocktime - elapsed_time;
+        debug!("Sleeping for: {} ms", sleep_time.as_millis());
+        sleep(sleep_time).await;
+    }
+}
+
+async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<String, String>>>) {
+    let provider = connect_and_verify(chain.clone()).await;
 
     info!("Starting Account Watcher for {} in Blocks Mode", chain.name);
 
@@ -249,40 +276,39 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
     }
 }
 
-async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<String, String>>>) {
+async fn debug_chain_events(
+    chain: Chain,
+    addressbook: Arc<Mutex<HashMap<String, String>>>,
+    debug_block_number: u64,
+) {
     let provider = connect_and_verify(chain.clone()).await;
 
-    let debug_block_var = env::var("DEBUG_BLOCK");
-    if debug_block_var.is_ok() {
-        warn!("Running in debug mode, getting single block");
-        let debug_block_number = debug_block_var
-            .unwrap()
-            .parse::<u64>()
-            .expect("Invalid DEBUG_BLOCK");
+    let events = provider
+        .get_logs(&LogFilter::new().select(debug_block_number))
+        .await
+        .unwrap();
 
-        let events = provider
-            .get_logs(&LogFilter::new().select(debug_block_number))
-            .await
-            .unwrap();
+    loop {
+        let now = Instant::now();
+        let notification = process_block_events(&events, &chain, addressbook.clone());
 
-        loop {
-            let now = Instant::now();
-            let notification = process_block_events(&events, &chain, addressbook.clone());
-
-            if notification.is_some() {
-                notification.unwrap().send().await.unwrap();
-                info!("Notification sent, exiting");
-                std::process::exit(0)
-            }
-
-            warn!("No transaction by monitored accounts found, have the accounts been setup?");
-
-            let elapsed_time = now.elapsed();
-            let sleep_time = chain.blocktime - elapsed_time;
-            debug!("Sleeping for: {} ms", sleep_time.as_millis());
-            sleep(sleep_time).await;
+        if notification.is_some() {
+            notification.unwrap().send().await.unwrap();
+            info!("Notification sent, exiting");
+            std::process::exit(0)
         }
-    };
+
+        warn!("No transaction by monitored accounts found, have the accounts been setup?");
+
+        let elapsed_time = now.elapsed();
+        let sleep_time = chain.blocktime - elapsed_time;
+        debug!("Sleeping for: {} ms", sleep_time.as_millis());
+        sleep(sleep_time).await;
+    }
+}
+
+async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<String, String>>>) {
+    let provider = connect_and_verify(chain.clone()).await;
 
     info!("Starting Account Watcher for {} Event Mode", chain.name);
 
