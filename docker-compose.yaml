@@ -1,0 +1,10 @@
+services:
+  account-monitor:
+    build: .
+    env_file: .env
+    restart: unless-stopped
+    ports:
+      - "3030:3030"
+    volumes:
+      - "./rotki_db.db:/rotki_db.db:ro"
+
