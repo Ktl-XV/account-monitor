@@ -205,7 +205,7 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                     "Error while getting {} block number from RPC, retrying",
                     chain.name
                 );
-                break;
+                continue;
             }
         };
 
@@ -223,7 +223,7 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                         "Error while getting {} block receipts from RPC, retrying",
                         chain.name
                     );
-                    break;
+                    continue;
                 }
             };
 
@@ -232,7 +232,8 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             if notification.is_some() {
                 let sent_notification = notification.unwrap().send().await;
                 if sent_notification.is_err() {
-                    error!("Error while sending notification, retrying")
+                    error!("Error while sending notification, retrying");
+                    continue;
                 }
             }
             next_block_number = next_block_number + 1
@@ -296,7 +297,7 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                     "Error while getting {} block number from RPC, retrying",
                     chain.name
                 );
-                break;
+                continue;
             }
         };
 
@@ -306,21 +307,31 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             "Processing {} from block {} to block {}",
             chain.name, next_block_number, block_number
         );
-        let events = provider
+        let events = match provider
             .get_logs(
                 &LogFilter::new()
                     .from_block(next_block_number)
                     .to_block(block_number),
             )
             .await
-            .unwrap();
+        {
+            Ok(events) => events,
+            Err(_) => {
+                error!(
+                    "Error while getting {} events from RPC, retrying",
+                    chain.name
+                );
+                continue;
+            }
+        };
 
         let notification = process_block_events(&events, &chain, addressbook.clone());
 
         if notification.is_some() {
             let sent_notification = notification.unwrap().send().await;
             if sent_notification.is_err() {
-                error!("Error while sending notification, retrying")
+                error!("Error while sending notification, retrying");
+                continue;
             }
         }
         next_block_number = block_number + 1;
