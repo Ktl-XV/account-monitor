@@ -250,7 +250,7 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                         "Error while getting {} block receipts from RPC, retrying",
                         chain.name
                     );
-                    continue;
+                    break;
                 }
             };
 
@@ -260,7 +260,7 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                 let sent_notification = notification.unwrap().send().await;
                 if sent_notification.is_err() {
                     error!("Error while sending notification, retrying");
-                    continue;
+                    break;
                 }
             }
             next_block_number = next_block_number + 1
