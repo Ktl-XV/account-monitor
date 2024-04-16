@@ -12,6 +12,7 @@ use account_monitor::{address_name, scale_amount, FullString};
 pub enum InterestingTransactionKind {
     Send,
     Transfer,
+    Transfer1155,
     Other,
 }
 
@@ -58,6 +59,18 @@ impl BuildNotification for InterestingTransaction {
                 format!(
                     "Transfering {} {} from {} to {} on {}",
                     scaled_amount,
+                    token.symbol,
+                    address_name(addressbook.clone(), self.from).unwrap(),
+                    address_name(addressbook.clone(), self.to).unwrap(),
+                    chain.name
+                )
+            }
+
+            InterestingTransactionKind::Transfer1155 => {
+                let token: Token = Token::from_chain_address(chain, self.token.unwrap());
+
+                format!(
+                    "Transfering ERC1155 {} from {} to {} on {}",
                     token.symbol,
                     address_name(addressbook.clone(), self.from).unwrap(),
                     address_name(addressbook.clone(), self.to).unwrap(),

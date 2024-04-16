@@ -385,6 +385,7 @@ fn parse_logs(
         .map(|addr| H256::from(Address::from_str(addr).unwrap()))
         .collect();
 
+    let mut tx = None;
     for log in logs.iter() {
         for topic in log.topics.iter() {
             if watched_addresses_as_topics.contains(topic) {
@@ -395,17 +396,40 @@ fn parse_logs(
                     )
                     .unwrap()
                 {
-                    return Some(InterestingTransaction {
-                        hash: log.transaction_hash.unwrap(),
-                        from: Some(Address::from(log.topics[1])),
-                        to: Some(Address::from(log.topics[2])),
-                        kind: InterestingTransactionKind::Transfer,
-                        amount: U256::decode(&log.data).unwrap_or(U256::from("0")),
-                        token: Some(log.address),
-                        involved_account: None,
-                    });
+                    if watched_addresses_as_topics.contains(&log.topics[1]) {
+                        return Some(InterestingTransaction {
+                            hash: log.transaction_hash.unwrap(),
+                            from: Some(Address::from(log.topics[1])),
+                            to: Some(Address::from(log.topics[2])),
+                            kind: InterestingTransactionKind::Transfer,
+                            amount: U256::decode(&log.data).unwrap_or(U256::from("0")),
+                            token: Some(log.address),
+                            involved_account: None,
+                        });
+                    } else {
+                        debug!("Ignoring Spam");
+                    }
+                } else if log.topics[0]
+                    == H256::from_str(
+                        "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62", //TRANSFER_SINGLE ERC1155
+                    )
+                    .unwrap()
+                {
+                    if watched_addresses_as_topics.contains(&log.topics[2]) {
+                        return Some(InterestingTransaction {
+                            hash: log.transaction_hash.unwrap(),
+                            from: Some(Address::from(log.topics[2])),
+                            to: Some(Address::from(log.topics[3])),
+                            kind: InterestingTransactionKind::Transfer1155,
+                            amount: (U256::from("0")),
+                            token: Some(log.address),
+                            involved_account: None,
+                        });
+                    } else {
+                        debug!("Ignoring Spam");
+                    }
                 } else {
-                    return Some(InterestingTransaction {
+                    tx = Some(InterestingTransaction {
                         hash: log.transaction_hash.unwrap(),
                         involved_account: watched_addresses_as_topics
                             .iter()
@@ -433,7 +457,7 @@ fn parse_logs(
             }
         }
     }
-    None
+    tx
 }
 
 fn process_block(
