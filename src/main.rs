@@ -8,7 +8,9 @@ use ethers::{
 };
 use eyre::Result;
 use log::{debug, error, info, warn};
+use serde::Serialize;
 use serde_derive::{Deserialize as DeserializeMacro, Serialize as SerializeMacro};
+use serde_yaml::{self};
 use std::collections::HashMap;
 use std::env;
 use std::str::FromStr;
@@ -19,8 +21,6 @@ use tokio::{
     time::sleep,
 };
 use warp::Filter;
-
-use serde::Serialize;
 
 mod chain;
 mod interesting_transaction;
@@ -46,12 +46,13 @@ async fn main() -> Result<()> {
 
     let addressbook = Arc::new(Mutex::new(HashMap::new()));
 
+    let addrbook = addressbook.clone();
+
     let add_monitor_account = warp::post()
         .and(warp::path("accounts"))
         .and(warp::body::content_length_limit(1024 * 16))
         .and(warp::body::json())
         .map({
-            let acc = addressbook.clone();
             move |account: WatchedAccount| {
                 let test = Address::from_str(&account.address[..]);
 
@@ -61,11 +62,7 @@ async fn main() -> Result<()> {
                         warp::http::StatusCode::UNPROCESSABLE_ENTITY,
                     )
                 } else {
-                    acc.lock()
-                        .unwrap()
-                        .insert(account.address.to_lowercase(), account.label);
-
-                    let watched_accounts_count = acc.lock().unwrap().len();
+                    let watched_accounts_count = watch_account(addrbook.clone(), account);
                     info!("Watched Accounts: {}", watched_accounts_count);
 
                     warp::reply::with_status(
@@ -82,8 +79,28 @@ async fn main() -> Result<()> {
             .await;
     });
 
+    let static_accounts_path_var = env::var("STATIC_ACCOUNTS_PATH");
+    let mut watched_accounts_count: u32 = 0;
+    if static_accounts_path_var.is_ok() {
+        let static_accounts_path = static_accounts_path_var.unwrap();
+
+        let file =
+            std::fs::File::open(static_accounts_path).expect("Could not open accounts file.");
+        let accounts_to_add: Vec<WatchedAccount> =
+            serde_yaml::from_reader(file).expect("Could not read accounts.");
+        watched_accounts_count = accounts_to_add
+            .into_iter()
+            .map(|acc| watch_account(addressbook.clone(), acc))
+            .max()
+            .unwrap();
+    }
+
     Notification {
-        message: "Account Monitor Started, no accounts configured".to_string(),
+        message: format!(
+            "Account Monitor Started, {} accounts configured",
+            watched_accounts_count
+        )
+        .to_string(),
         url: None,
     }
     .send()
@@ -138,6 +155,18 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn watch_account(
+    addressbook: Arc<Mutex<HashMap<String, String>>>,
+    new_account: WatchedAccount,
+) -> u32 {
+    addressbook
+        .lock()
+        .unwrap()
+        .insert(new_account.address.to_lowercase(), new_account.label);
+
+    addressbook.lock().unwrap().len() as u32
 }
 
 #[derive(SerializeMacro, Debug)]

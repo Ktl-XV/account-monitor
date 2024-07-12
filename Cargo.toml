@@ -22,6 +22,7 @@ auto_impl = "1.2.0"
 async-trait = "0.1.79"
 thiserror = "1.0.58"
 ethers-providers = "2.0.14"
+serde_yaml = "0.9.34"
 
 [[bin]]
 name = "account-monitor"
