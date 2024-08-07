@@ -403,6 +403,10 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
 
         info!("Current block number on {}: {}", chain.name, block_number);
 
+        CURRENT_BLOCK
+            .with_label_values(&[chain.name.as_str()])
+            .set(block_number.try_into().unwrap());
+
         if next_block_number <= block_number_with_delay {
             debug!(
                 "Processing {} from block {} to block {}",
