@@ -9,7 +9,7 @@ use ethers::{
 use eyre::Result;
 use lazy_static::lazy_static;
 use log::{debug, error, info, warn};
-use prometheus::{IntGaugeVec, Opts as PrometheusOpts, Registry};
+use prometheus::{IntGauge, IntGaugeVec, Opts as PrometheusOpts, Registry};
 use serde::Serialize;
 use serde_derive::{Deserialize as DeserializeMacro, Serialize as SerializeMacro};
 use serde_yaml::{self};
@@ -48,11 +48,17 @@ lazy_static! {
         &["chain"]
     )
     .expect("metric can be created");
+    pub static ref MONITORED_ACCOUNTS: IntGauge =
+        IntGauge::new("monitored_accounts", "Count of monitored accounts")
+            .expect("metric can be created");
 }
 
 fn register_custom_metrics() {
     REGISTRY
         .register(Box::new(CURRENT_BLOCK.clone()))
+        .expect("collector can be registered");
+    REGISTRY
+        .register(Box::new(MONITORED_ACCOUNTS.clone()))
         .expect("collector can be registered");
 }
 
@@ -83,6 +89,7 @@ async fn main() -> Result<()> {
                 } else {
                     let watched_accounts_count = watch_account(addrbook.clone(), account);
                     info!("Watched Accounts: {}", watched_accounts_count);
+                    MONITORED_ACCOUNTS.set(watched_accounts_count as i64);
 
                     warp::reply::with_status(
                         format!("Watching {} accounts\n", watched_accounts_count),
@@ -134,6 +141,7 @@ async fn main() -> Result<()> {
             .unwrap();
     }
 
+    MONITORED_ACCOUNTS.set(watched_accounts_count as i64);
     Notification {
         message: format!(
             "Account Monitor Started, {} accounts configured",
