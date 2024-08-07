@@ -304,7 +304,7 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             }
         };
 
-        info!("Current block number on {}: {}", chain.name, block_number);
+        debug!("Current block number on {}: {}", chain.name, block_number);
 
         CURRENT_BLOCK
             .with_label_values(&[chain.name.as_str()])
@@ -401,7 +401,7 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
 
         let block_number_with_delay = block_number - 1;
 
-        info!("Current block number on {}: {}", chain.name, block_number);
+        debug!("Current block number on {}: {}", chain.name, block_number);
 
         CURRENT_BLOCK
             .with_label_values(&[chain.name.as_str()])
