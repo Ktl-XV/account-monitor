@@ -23,6 +23,8 @@ async-trait = "0.1.79"
 thiserror = "1.0.58"
 ethers-providers = "2.0.14"
 serde_yaml = "0.9.34"
+lazy_static = "1.4"
+prometheus = "0.13.4"
 
 [[bin]]
 name = "account-monitor"

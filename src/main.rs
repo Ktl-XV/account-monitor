@@ -7,7 +7,9 @@ use ethers::{
     providers::{Http, Provider, ProviderError},
 };
 use eyre::Result;
+use lazy_static::lazy_static;
 use log::{debug, error, info, warn};
+use prometheus::{IntGaugeVec, Opts as PrometheusOpts, Registry};
 use serde::Serialize;
 use serde_derive::{Deserialize as DeserializeMacro, Serialize as SerializeMacro};
 use serde_yaml::{self};
@@ -39,10 +41,27 @@ struct WatchedAccount {
     label: String,
 }
 
+lazy_static! {
+    pub static ref REGISTRY: Registry = Registry::new();
+    pub static ref CURRENT_BLOCK: IntGaugeVec = IntGaugeVec::new(
+        PrometheusOpts::new("current_block", "Current Block on each chain"),
+        &["chain"]
+    )
+    .expect("metric can be created");
+}
+
+fn register_custom_metrics() {
+    REGISTRY
+        .register(Box::new(CURRENT_BLOCK.clone()))
+        .expect("collector can be registered");
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     dotenv::dotenv().ok();
     env_logger::init();
+
+    register_custom_metrics();
 
     let addressbook = Arc::new(Mutex::new(HashMap::new()));
 
@@ -73,8 +92,28 @@ async fn main() -> Result<()> {
             }
         });
 
+    let metrics_route = warp::get().and(warp::path("metrics")).map(|| {
+        use prometheus::Encoder;
+        let encoder = prometheus::TextEncoder::new();
+
+        let mut buffer = Vec::new();
+        if let Err(e) = encoder.encode(&REGISTRY.gather(), &mut buffer) {
+            error!("could not encode custom metrics: {}", e);
+        };
+        let res = match String::from_utf8(buffer.clone()) {
+            Ok(v) => v,
+            Err(e) => {
+                error!("custom metrics could not be from_utf8'd: {}", e);
+                String::default()
+            }
+        };
+        buffer.clear();
+
+        res
+    });
+
     tokio::spawn(async move {
-        warp::serve(add_monitor_account)
+        warp::serve(metrics_route.or(add_monitor_account))
             .run(([0, 0, 0, 0], 3030))
             .await;
     });
@@ -266,6 +305,10 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
         };
 
         info!("Current block number on {}: {}", chain.name, block_number);
+
+        CURRENT_BLOCK
+            .with_label_values(&[chain.name.as_str()])
+            .set(block_number.try_into().unwrap());
 
         while next_block_number <= block_number {
             debug!("Processing {} block {}", chain.name, next_block_number);
