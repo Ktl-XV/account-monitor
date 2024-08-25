@@ -30,7 +30,7 @@ jobs:
           images: git.ktlxv.com/jorge/account-monitor
           tags: |
             type=raw,value=latest,enable={{is_default_branch}}
-            type=ref,event=branch,enable={{!is_default_branch}}
+            type=ref,event=branch,enable={{not is_default_branch}}
 
       - name: Build
         uses: docker/build-push-action@v5
