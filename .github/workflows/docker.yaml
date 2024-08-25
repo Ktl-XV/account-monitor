@@ -2,7 +2,9 @@ name: Build and push image
 
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - debug/*
 
 jobs:
   build-push:
@@ -21,9 +23,19 @@ jobs:
           username: ${{ github.repository_owner }}
           password: ${{ secrets.DOCKER_GITEA_REPO_TOKEN }}
 
+      - name: Extract metadata (tags, labels) for Docker
+        id: meta
+        uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
+        with:
+          images: git.ktlxv.com/jorge/account-monitor
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=ref,event=branch
+
       - name: Build
         uses: docker/build-push-action@v5
         with:
           context: .
           push: true
-          tags: git.ktlxv.com/jorge/account-monitor
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
