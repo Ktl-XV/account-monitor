@@ -1,7 +1,9 @@
 use ethers::{
     core::{
         abi::AbiDecode,
-        types::{Address, BlockNumber, Filter as LogFilter, Log, TransactionReceipt, H256, U256},
+        types::{
+            Address, BlockNumber, Filter as LogFilter, Log, TransactionReceipt, H256, U256, U64,
+        },
     },
     middleware::Middleware,
     providers::{Http, Provider, ProviderError},
@@ -388,6 +390,7 @@ async fn debug_chain_events(
 }
 
 async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<String, String>>>) {
+    let MAX_BLOCK_RANGE: U64 = U64::from(1500_u64);
     let provider = connect_and_verify(chain.clone()).await;
 
     info!("Starting Account Watcher for {} Event Mode", chain.name);
@@ -395,6 +398,7 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
     let mut next_block_number = provider.get_block_number().await.unwrap();
 
     loop {
+        debug!("AAA");
         let now = Instant::now();
         let block_number = match provider.get_block_number().await {
             Ok(res) => res,
@@ -406,6 +410,7 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                 continue;
             }
         };
+        debug!("BBB");
 
         let block_number_with_delay = block_number - 1;
 
@@ -415,16 +420,23 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             .with_label_values(&[chain.name.as_str()])
             .set(block_number.try_into().unwrap());
 
+        debug!("CCC");
         if next_block_number <= block_number_with_delay {
+            let to_block = if block_number_with_delay - next_block_number <= MAX_BLOCK_RANGE {
+                block_number_with_delay
+            } else {
+                next_block_number + MAX_BLOCK_RANGE
+            };
+
             debug!(
                 "Processing {} from block {} to block {}",
-                chain.name, next_block_number, block_number_with_delay
+                chain.name, next_block_number, to_block
             );
             let events = match provider
                 .get_logs(
                     &LogFilter::new()
                         .from_block(next_block_number)
-                        .to_block(block_number_with_delay),
+                        .to_block(to_block),
                 )
                 .await
             {
@@ -438,8 +450,10 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                 }
             };
 
+            debug!("DDD");
             let notification = process_block_events(&events, &chain, addressbook.clone());
 
+            debug!("EEE");
             if notification.is_some() {
                 let sent_notification = notification.unwrap().send().await;
                 if sent_notification.is_err() {
@@ -447,7 +461,7 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                     continue;
                 }
             }
-            next_block_number = block_number_with_delay + 1;
+            next_block_number = to_block + 1;
         }
 
         let elapsed_time = now.elapsed();
