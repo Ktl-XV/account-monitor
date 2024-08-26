@@ -619,7 +619,9 @@ fn process_block_events(
 
 pub async fn connect_and_verify(chain: Chain) -> Provider<Http> {
     let provider =
-        Provider::<Http>::try_from(chain.rpc.clone()).expect("could not instantiate HTTP Provider").with_timeout(30);
+        Provider::<Http>::try_from(chain.rpc.clone())
+        .expect("could not instantiate HTTP Provider")
+        .with_timeout(Duration::from_secs(30));
 
     let chainid = provider.get_chainid().await.unwrap();
 
