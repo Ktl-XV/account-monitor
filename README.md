@@ -104,3 +104,5 @@ Thanks to [ntfy](https://ntfy.sh) for a building a simple to use notification se
 
 # Contributing
 Issues and PRs for this repository are welcome and managed in [Radicle](https://radicle.xyz/guides/user).
+
+Repository ID: [rad:z3SRsZ8YdvUg4UEkqffuHrFdFEcML](https://app.radicle.xyz/nodes/seed.radicle.garden/rad:z3SRsZ8YdvUg4UEkqffuHrFdFEcML)
