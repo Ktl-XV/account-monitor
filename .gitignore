@@ -1,0 +1,6 @@
+/target
+.env
+docker-compose.override.yaml
+accounts.yaml
+
+rotki_db.db

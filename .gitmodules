@@ -1,0 +1,5 @@
+[submodule "rotki-assets"]
+	path = rotki-assets
+	url = https://github.com/rotki/assets.git
+  shallow = true
+  fetchRecurseSubmodules = false
