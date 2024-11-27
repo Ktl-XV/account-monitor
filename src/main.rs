@@ -451,10 +451,6 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
 
         debug!("Current block number on {}: {}", chain.name, block_number);
 
-        CURRENT_BLOCK
-            .with_label_values(&[chain.name.as_str()])
-            .set(block_number.try_into().unwrap());
-
         if next_block_number <= block_number_with_delay {
             let to_block = if block_number_with_delay - next_block_number <= MAX_BLOCK_RANGE.into()
             {
@@ -510,6 +506,10 @@ async fn monitor_chain_events(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             }
             next_block_number = to_block + 1;
         }
+
+        CURRENT_BLOCK
+            .with_label_values(&[chain.name.as_str()])
+            .set((next_block_number.as_u64() - 1) as i64);
 
         retry_count = 0;
 
