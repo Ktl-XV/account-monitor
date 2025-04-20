@@ -25,7 +25,7 @@ pub struct InterestingTransaction {
     pub to: Option<Address>,
     pub kind: InterestingTransactionKind,
     pub amount: Option<U256>,
-    pub token: Option<Address>,
+    pub contract: Option<Address>,
     pub involved_account: Address,
 }
 
@@ -67,7 +67,7 @@ impl BuildNotification for InterestingTransaction {
             }
 
             InterestingTransactionKind::Transfer => {
-                let token: Token = Token::from_chain_address(chain, self.token.unwrap());
+                let token: Token = Token::from_chain_address(chain, self.contract.unwrap());
 
                 let scaled_amount = scale_amount(self.amount.unwrap(), token.decimals);
                 format!(
@@ -81,7 +81,7 @@ impl BuildNotification for InterestingTransaction {
             }
 
             InterestingTransactionKind::Transfer1155 => {
-                let token: Token = Token::from_chain_address(chain, self.token.unwrap());
+                let token: Token = Token::from_chain_address(chain, self.contract.unwrap());
 
                 format!(
                     "Transfering ERC1155 {} from {} to {} on {}",
@@ -93,7 +93,7 @@ impl BuildNotification for InterestingTransaction {
             }
 
             InterestingTransactionKind::Approval => {
-                let token: Token = Token::from_chain_address(chain, self.token.unwrap());
+                let token: Token = Token::from_chain_address(chain, self.contract.unwrap());
 
                 let scaled_amount = match self.amount.unwrap() == U256::MAX {
                     true => "Infinite".to_string(),
@@ -139,7 +139,7 @@ impl SpamFilter for InterestingTransaction {
                 InterestingTransactionKind::Send => false,
                 InterestingTransactionKind::Other => false,
                 _ => {
-                    !(self.token.unwrap().is_known_token())
+                    !(self.contract.unwrap().is_known_token())
                         || self.involved_account != self.from.unwrap()
                 }
             },

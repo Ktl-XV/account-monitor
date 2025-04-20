@@ -304,7 +304,7 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
 
     info!("Starting Account Watcher for {} in Blocks Mode", chain.name);
 
-    let mut next_block_number = provider.get_block_number().await.unwrap();
+    let mut next_block_number = ethers::types::U64::zero();
 
     let mut retry_count = 0;
 
@@ -332,6 +332,10 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
             }
         };
 
+        if next_block_number.is_zero() {
+            next_block_number = block_number;
+        }
+
         debug!("Current block number on {}: {}", chain.name, block_number);
 
         while next_block_number <= block_number {
@@ -345,7 +349,17 @@ async fn monitor_chain_blocks(chain: Chain, addressbook: Arc<Mutex<HashMap<Strin
                         "Error while getting {} block receipts from RPC, retrying",
                         chain.name
                     );
-                    break;
+                    if retry_count > START_BACKOFF_RETRY_COUNT {
+                        error!(
+                            "{} retry count {}, waiting {} seconds before next retry",
+                            chain.name,
+                            retry_count,
+                            chain.blocktime.as_secs()
+                        );
+                        sleep(chain.blocktime).await;
+                    }
+                    retry_count += 1;
+                    continue;
                 }
             };
 
@@ -555,13 +569,14 @@ fn parse_logs(
                         to: Some(Address::from(log.topics[2])),
                         kind: InterestingTransactionKind::Transfer,
                         amount: Some(U256::decode(&log.data).unwrap_or(U256::from("0"))),
-                        token: Some(log.address),
+                        contract: Some(log.address),
                         involved_account,
                     });
                 }
                 if log.topics[0]
                     == H256::from_str(
-                        "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62", //TRANSFER_SINGLE ERC1155
+                        "0xc3d58168c5ae7397731d063d5bbf3d657854427343f4c083240f7aacaa2d0f62",
+                        // TRANSFER_SINGLE_ERC1155_TOPIC
                     )
                     .unwrap()
                 {
@@ -571,7 +586,7 @@ fn parse_logs(
                         to: Some(Address::from(log.topics[3])),
                         kind: InterestingTransactionKind::Transfer1155,
                         amount: Some(U256::from("0")),
-                        token: Some(log.address),
+                        contract: Some(log.address),
                         involved_account,
                     });
                 }
@@ -587,7 +602,7 @@ fn parse_logs(
                         to: Some(Address::from(log.topics[2])),
                         kind: InterestingTransactionKind::Approval,
                         amount: Some(U256::decode(&log.data).unwrap_or(U256::from("0"))),
-                        token: Some(log.address),
+                        contract: Some(log.address),
                         involved_account,
                     });
                 }
@@ -603,13 +618,21 @@ fn parse_logs(
                         to: Some(Address::from(log.address)),
                         kind: InterestingTransactionKind::Send,
                         amount: Some(U256::decode(&log.data).unwrap_or(U256::from("0"))),
-                        token: None,
+                        contract: None,
                         involved_account,
                     });
                 }
 
-                // Add as unknown transaction if no known logs were emmited
-                if interesting_transactions.len() == start_interesting_transactions_count {
+                // Add as unknown transaction if no known logs were emmited and the logs are not
+                // filtered out
+                if interesting_transactions.len() == start_interesting_transactions_count
+                    && log.topics[0]
+                        != H256::from_str(
+                            "0xa20126263d779da517a295859c8332765f45a215da1c42acac1b9e458a69a144", // Zora CoinTransfer
+                        )
+                        .unwrap()
+                {
+                    info!("{}", log.topics[0]);
                     interesting_transactions.push(InterestingTransaction {
                         hash: log.transaction_hash.unwrap(),
                         involved_account,
@@ -617,7 +640,7 @@ fn parse_logs(
                         to: None,
                         kind: InterestingTransactionKind::Other,
                         amount: None,
-                        token: None,
+                        contract: Some(log.address),
                     });
                 }
             }
@@ -657,7 +680,7 @@ fn process_block(
                             InterestingTransactionKind::Other
                         },
                         amount: None,
-                        token: None,
+                        contract: None,
                         involved_account,
                     });
                 }
@@ -707,9 +730,16 @@ fn build_notifications(
 }
 
 pub async fn connect_and_verify(mut chain: Chain) -> (Chain, Provider<Http>) {
+    let mut headers = reqwest::header::HeaderMap::new();
+    headers.insert(
+        "app",
+        reqwest::header::HeaderValue::from_static("account-monitor"),
+    );
+
     let url = reqwest::Url::parse(chain.rpc.as_str()).expect("Invalid RPC");
     let http_client = reqwest::Client::builder()
         .timeout(Duration::new(5, 0))
+        .default_headers(headers)
         .build()
         .unwrap();
 
